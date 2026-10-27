@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Centro de Datos Inmersivo VR - ESPOCH</title>
+  <!-- A-Frame VR Framework -->
+  <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+  
+  <script>
+    // ==========================================
+    // COMPONENTE PERSONALIZADO: RACK DE SERVIDORES
+    // ==========================================
+    AFRAME.registerComponent('rack', {
+      schema: {
+        unidades: { type: 'int', default: 8 },
+        estado: { type: 'string', default: 'ok' } // 'ok' o 'falla'
+      },
+      init: function () {
+        const el = this.el;
+        const data = this.data;
+
+        // Estructura principal del Rack (Gabinete metálico negro)
+        const marco = document.createElement('a-box');
+        marco.setAttribute('position', '0 1.1 0');
+        marco.setAttribute('width', '0.8');
+        marco.setAttribute('height', '2.2');
+        marco.setAttribute('depth', '1.0');
+        marco.setAttribute('color', '#12161a');
+        marco.setAttribute('metalness', '0.8');
+        marco.setAttribute('roughness', '0.2');
+        el.appendChild(marco);
+
+        // Puerta de cristal frontal transparente
+        const cristal = document.createElement('a-box');
+        cristal.setAttribute('position', '0 1.1 0.51');
+        cristal.setAttribute('width', '0.74');
+        cristal.setAttribute('height', '2.1');
+        cristal.setAttribute('depth', '0.01');
+        cristal.setAttribute('material', 'color: #88c0d0; opacity: 0.25; transparent: true; roughness: 0.1');
+        el.appendChild(cristal);
+
+        // Generar Unidades de Servidores (Blade Servers) dentro del rack
+        const totalU = data.unidades;
+        const startY = 0.2;
+        const stepY = 2.0 / totalU;
+
+        for (let i = 0; i < totalU; i++) {
+          const uPosY = startY + i * stepY;
+
+          // Chasis de servidor
+          const server = document.createElement('a-box');
+          server.setAttribute('position', `0 ${uPosY.toFixed(2)} 0.05`);
+          server.setAttribute('width', '0.72');
+          server.setAttribute('height', (stepY * 0.85).toFixed(2));
+          server.setAttribute('depth', '0.9');
+          server.setAttribute('color', '#2e3440');
+          el.appendChild(server);
+
+          // Carátula frontal con detalles de luces LED
+          const panel = document.createElement('a-box');
+          panel.setAttribute('position', `0 ${uPosY.toFixed(2)} 0.505`);
+          panel.setAttribute('width', '0.70');
+          panel.setAttribute('height', (stepY * 0.75).toFixed(2));
+          panel.setAttribute('depth', '0.01');
+          panel.setAttribute('color', '#1a1c23');
+          el.appendChild(panel);
+
+          // Determinar estado de LEDs (Falla en el LED si el rack está en estado 'falla' y es una unidad específica)
+          let ledColor = '#00ff66'; // Verde funcionando bien
+          if (data.estado === 'falla' && (i === 3 || i === 4)) {
+            ledColor = '#ff2200'; // Rojo intermitente de alerta
+          }
+
+          // LED de Encendido / Red
+          const led = document.createElement('a-sphere');
+          led.setAttribute('position', `-0.28 ${uPosY.toFixed(2)} 0.515`);
+          led.setAttribute('radius', '0.02');
+          led.setAttribute('color', ledColor);
+          if (data.estado === 'falla' && (i === 3 || i === 4)) {
+            led.setAttribute('animation', 'property: material.color; type: color; from: #ff2200; to: #440000; dir: alternate; dur: 400; loop: true');
+          }
+          el.appendChild(led);
+
+          // Ranuras de bahías de discos en el servidor
+          for (let d = -0.15; d <= 0.25; d += 0.1) {
+            const driveSlot = document.createElement('a-box');
+            driveSlot.setAttribute('position', `${d.toFixed(2)} ${uPosY.toFixed(2)} 0.512`);
+            driveSlot.setAttribute('width', '0.08');
+            driveSlot.setAttribute('height', (stepY * 0.5).toFixed(2));
+            driveSlot.setAttribute('depth', '0.005');
+            driveSlot.setAttribute('color', '#4c566a');
+            el.appendChild(driveSlot);
+          }
+        }
+
+        // Zona invisible frontal para facilitar la selección por raycaster / clic
+        const triggerArea = document.createElement('a-box');
+        triggerArea.setAttribute('position', '0 1.1 0.6');
+        triggerArea.setAttribute('width', '0.85');
+        triggerArea.setAttribute('height', '2.2');
+        triggerArea.setAttribute('depth', '0.2');
+        triggerArea.setAttribute('material', 'visible: false');
+        triggerArea.classList.add('interactivo');
+        el.appendChild(triggerArea);
+      }
+    });
+
+    // ==========================================
+    // COMPONENTE PERSONALIZADO: INFO-RACK (INTERACTIVO)
+    // ==========================================
+    AFRAME.registerComponent('info-rack', {
+      schema: {
+        titulo: { type: 'string', default: 'RACK' },
+        detalle: { type: 'string', default: '' }
+      },
+      init: function () {
+        const el = this.el;
+
+        // Crear contenedor flotante para la información en 3D
+        const panel = document.createElement('a-entity');
+        panel.setAttribute('position', '0 2.45 0');
+        panel.setAttribute('visible', false);
+
+        // Fondo del cartel de información
+        const bg = document.createElement('a-plane');
+        bg.setAttribute('width', '1.6');
+        bg.setAttribute('height', '0.9');
+        bg.setAttribute('material', 'color: #0b192c; opacity: 0.95; side: double; transparent: true');
+        bg.setAttribute('border', 'color: #00e5ff');
+        panel.appendChild(bg);
+
+        // Marco decorativo cian
+        const border = document.createElement('a-plane');
+        border.setAttribute('width', '1.64');
+        border.setAttribute('height', '0.94');
+        border.setAttribute('position', '0 0 -0.005');
+        border.setAttribute('color', '#00e5ff');
+        panel.appendChild(border);
+
+        // Texto con el título y detalles del servidor
+        const texto = document.createElement('a-text');
+        texto.setAttribute('value', `${this.data.titulo}\n${this.data.detalle}`);
+        texto.setAttribute('color', '#ffffff');
+        texto.setAttribute('align', 'center');
+        texto.setAttribute('width', '1.5');
+        texto.setAttribute('position', '0 0 0.01');
+        panel.appendChild(texto);
+
+        el.appendChild(panel);
+
+        // Al hacer clic sobre el rack, alternar visibilidad del panel de información
+        el.addEventListener('click', function (evt) {
+          evt.stopPropagation();
+          const actualVis = panel.getAttribute('visible');
+          panel.setAttribute('visible', !actualVis);
+        });
+      }
+    });
+  </script>
+</head>
+<body style="margin: 0; overflow: hidden; background-color: #000;">
+
+  <a-scene background="color: #0b0d12">
+    
+    <!-- ==========================================
+         ILUMINACIÓN DE LA SALA
+         ========================================== -->
+    <!-- Luz Ambiental Suave -->
+    <a-light type="ambient" color="#3a4b5c" intensity="0.6"></a-light>
+
+    <!-- Luces LED de Pasillo Techo -->
+    <a-light type="point" color="#e0f7fc" intensity="1.2" distance="12" position="0 3.2 -3"></a-light>
+    <a-light type="point" color="#e0f7fc" intensity="1.2" distance="12" position="0 3.2 -7"></a-light>
+
+    <!-- Alarma visual roja intermitente enfocada en la zona de falla -->
+    <a-light type="point" color="#ff2222" intensity="0.8" distance="4" position="1.2 2.2 -5"
+             animation="property: intensity; from: 0.2; to: 1.5; dir: alternate; dur: 600; loop: true"></a-light>
+
+
+    <!-- ==========================================
+         ESTRUCTURA DE LA SALA (PAREDES Y TECHO)
+         ========================================== -->
+    <!-- Techo -->
+    <a-plane position="0 3.5 -4" rotation="90 0 0" width="8" height="12" color="#1a232a"></a-plane>
+
+    <!-- Pared Fondo (Z = -10) -->
+    <a-box position="0 1.75 -10" width="8" height="3.5" depth="0.1" color="#24384b"></a-box>
+
+    <!-- Pared Frontal / Entrada (Z = 2) -->
+    <a-box position="0 1.75 2" width="8" height="3.5" depth="0.1" color="#24384b"></a-box>
+
+    <!-- Pared Izquierda (X = -4) -->
+    <a-box position="-4 1.75 -4" rotation="0 90 0" width="12" height="3.5" depth="0.1" color="#24384b"></a-box>
+
+    <!-- Pared Derecha (X = 4) -->
+    <a-box position="4 1.75 -4" rotation="0 90 0" width="12" height="3.5" depth="0.1" color="#24384b"></a-box>
+
+    <!-- Piso Base -->
+    <a-plane position="0 0 -4" rotation="-90 0 0" width="8" height="12" color="#415b70"></a-plane>
+
+
+    <!-- ==========================================
+         PISO TÉCNICO: CUADRÍCULA (GRID 1x1m)
+         ========================================== -->
+    <!-- Líneas Longitudinales -->
+    <a-box position="-3 0.006 -4" width="0.015" height="0.012" depth="12" color="#9aabba"></a-box>
+    <a-box position="-2 0.006 -4" width="0.015" height="0.012" depth="12" color="#9aabba"></a-box>
+    <a-box position="-1 0.006 -4" width="0.015" height="0.012" depth="12" color="#9aabba"></a-box>
+    <a-box position="0 0.006 -4"  width="0.015" height="0.012" depth="12" color="#9aabba"></a-box>
+    <a-box position="1 0.006 -4"  width="0.015" height="0.012" depth="12" color="#9aabba"></a-box>
+    <a-box position="2 0.006 -4"  width="0.015" height="0.012" depth="12" color="#9aabba"></a-box>
+    <a-box position="3 0.006 -4"  width="0.015" height="0.012" depth="12" color="#9aabba"></a-box>
+
+    <!-- Líneas Transversales -->
+    <a-box position="0 0.006 1"  width="8" height="0.012" depth="0.015" color="#9aabba"></a-box>
+    <a-box position="0 0.006 0"  width="8" height="0.012" depth="0.015" color="#9aabba"></a-box>
+    <a-box position="0 0.006 -1" width="8" height="0.012" depth="0.015" color="#9aabba"></a-box>
+    <a-box position="0 0.006 -2" width="8" height="0.012" depth="0.015" color="#9aabba"></a-box>
+    <a-box position="0 0.006 -3" width="8" height="0.012" depth="0.015" color="#9aabba"></a-box>
+    <a-box position="0 0.006 -4" width="8" height="0.012" depth="0.015" color="#9aabba"></a-box>
+    <a-box position="0 0.006 -5" width="8" height="0.012" depth="0.015" color="#9aabba"></a-box>
+    <a-box position="0 0.006 -6" width="8" height="0.012" depth="0.015" color="#9aabba"></a-box>
+    <a-box position="0 0.006 -7" width="8" height="0.012" depth="0.015" color="#9aabba"></a-box>
+    <a-box position="0 0.006 -8" width="8" height="0.012" depth="0.015" color="#9aabba"></a-box>
+    <a-box position="0 0.006 -9" width="8" height="0.012" depth="0.015" color="#9aabba"></a-box>
+
+
+    <!-- ==========================================
+         PUERTA DE ACCESO Y LE TREROS DE SALIDA
+         ========================================== -->
+    <!-- Hoja de la Puerta -->
+    <a-box position="0 1 1.88" width="1.2" height="2" depth="0.05" color="#8a5a2b"></a-box>
+    <!-- Manija -->
+    <a-sphere position="0.45 1 1.81" radius="0.05" color="#f5c542"></a-sphere>
+    <!-- Marco de la puerta -->
+    <a-box position="0 1 1.91" width="1.3" height="2.1" depth="0.02" color="#3a2312"></a-box>
+
+    <!-- Letrero sobre la Puerta -->
+    <a-text value="ACCESO AL CENTRO DE DATOS\n- GRUPO 1 -" position="0 2.35 1.85" rotation="0 180 0" align="center" width="3" color="#ffffff"></a-text>
+
+    <!-- Indicador de Salida en el Piso -->
+    <a-text value="<<< SALIDA" position="0 0.03 0.8" rotation="-90 0 0" align="center" width="3" color="#ffe166"></a-text>
+
+
+    <!-- ==========================================
+         UNIDAD DE CLIMATIZACIÓN (CRAC)
+         ========================================== -->
+    <a-entity id="crac-unit" position="-3.1 0 -9">
+      <!-- Cuerpo Principal CRAC -->
+      <a-box position="0 1.1 0" width="1.3" height="2.2" depth="0.9" color="#9aa3b5"></a-box>
+      <!-- Panel de Control Frontal Superior -->
+      <a-box position="0 1.65 0.46" width="1.0" height="0.4" depth="0.02" color="#263849"></a-box>
+      <a-text value="CRAC - CLIMATIZACION\nTEMP: 18.5 C" position="0 1.65 0.48" align="center" width="1.8" color="#00e5ff"></a-text>
+      <!-- Rejilla de Ventilación Inferior -->
+      <a-box position="0 0.7 0.46" width="1.1" height="0.9" depth="0.02" color="#526272"></a-box>
+      <!-- Detalle de rejillas horizontales -->
+      <a-box position="0 0.9 0.47" width="1.05" height="0.02" depth="0.01" color="#1a232a"></a-box>
+      <a-box position="0 0.7 0.47" width="1.05" height="0.02" depth="0.01" color="#1a232a"></a-box>
+      <a-box position="0 0.5 0.47" width="1.05" height="0.02" depth="0.01" color="#1a232a"></a-box>
+    </a-entity>
+
+
+    <!-- ==========================================
+         8 RACKS ESTRUCTURADOS EN PASILLO FRÍO
+         ========================================== -->
+    <!-- FILA IZQUIERDA (4 Racks mirando hacia X positivo / Pasillo) -->
+    <a-entity rack="unidades: 8; estado: ok"
+              info-rack="titulo: RACK 01; detalle: SERVIDOR WEB PRINCIPAL\nESTADO: ACTIVO"
+              position="-1.6 0 -1" rotation="0 90 0"></a-entity>
+
+    <a-entity rack="unidades: 8; estado: ok"
+              info-rack="titulo: RACK 02; detalle: BASE DE DATOS (CLUSTER)\nESTADO: ACTIVO"
+              position="-1.6 0 -3" rotation="0 90 0"></a-entity>
+
+    <a-entity rack="unidades: 8; estado: ok"
+              info-rack="titulo: RACK 03; detalle: ALMACENAMIENTO NAS/SAN\nESTADO: ACTIVO"
+              position="-1.6 0 -5" rotation="0 90 0"></a-entity>
+
+    <a-entity rack="unidades: 8; estado: ok"
+              info-rack="titulo: RACK 04; detalle: SERVIDOR DE VIRTUALIZACION\nESTADO: ACTIVO"
+              position="-1.6 0 -7" rotation="0 90 0"></a-entity>
+
+    <!-- FILA DERECHA (4 Racks mirando hacia X negativo / Pasillo) -->
+    <a-entity rack="unidades: 8; estado: ok"
+              info-rack="titulo: RACK 05; detalle: ROUTERS & FIREWALLS\nESTADO: ACTIVO"
+              position="1.6 0 -1" rotation="0 -90 0"></a-entity>
+
+    <!-- RACK 06 EN FALLA -->
+    <a-entity rack="unidades: 8; estado: falla"
+              info-rack="titulo: RACK 06 [ALERTA]; detalle: CRITICAL: SERVIDOR MONITOREO\nESTADO: FALLA CRITICA"
+              position="1.6 0 -3" rotation="0 -90 0"></a-entity>
+
+    <a-entity rack="unidades: 8; estado: ok"
+              info-rack="titulo: RACK 07; detalle: RESPALDOS & BACKUP\nESTADO: ACTIVO"
+              position="1.6 0 -5" rotation="0 -90 0"></a-entity>
+
+    <a-entity rack="unidades: 8; estado: ok"
+              info-rack="titulo: RACK 08; detalle: SERVICIOS CLOUD / PROXY\nESTADO: ACTIVO"
+              position="1.6 0 -7" rotation="0 -90 0"></a-entity>
+
+
+    <!-- ==========================================
+         SEÑALÉTICA Y TEXTOS ESPACIALES
+         ========================================== -->
+    <!-- Identificadores numéricos individuales sobre cada Rack -->
+    <a-text value="RACK 01" position="-1.1 2.35 -1" rotation="0 90 0" align="center" width="2" color="#00e5ff"></a-text>
+    <a-text value="RACK 02" position="-1.1 2.35 -3" rotation="0 90 0" align="center" width="2" color="#00e5ff"></a-text>
+    <a-text value="RACK 03" position="-1.1 2.35 -5" rotation="0 90 0" align="center" width="2" color="#00e5ff"></a-text>
+    <a-text value="RACK 04" position="-1.1 2.35 -7" rotation="0 90 0" align="center" width="2" color="#00e5ff"></a-text>
+
+    <a-text value="RACK 05" position="1.1 2.35 -1" rotation="0 -90 0" align="center" width="2" color="#00e5ff"></a-text>
+    <a-text value="RACK 06 (FALLA)" position="1.1 2.35 -3" rotation="0 -90 0" align="center" width="2.2" color="#ff3333"></a-text>
+    <a-text value="RACK 07" position="1.1 2.35 -5" rotation="0 -90 0" align="center" width="2" color="#00e5ff"></a-text>
+    <a-text value="RACK 08" position="1.1 2.35 -7" rotation="0 -90 0" align="center" width="2" color="#00e5ff"></a-text>
+
+    <!-- Cartel Aéreo: PASILLO FRÍO -->
+    <a-plane position="0 3.1 -4" rotation="0 0 0" width="2.8" height="0.5" color="#0b192c" opacity="0.9"></a-plane>
+    <a-text value="PASILLO FRIO CENTRAL" position="0 3.1 -3.98" align="center" width="3" color="#5fe9ff"></a-text>
+
+
+    <!-- ==========================================
+         PANEL DE MONITOREO Y SUPERVISIÓN
+         ========================================== -->
+    <a-entity position="3.9 1.8 -4" rotation="0 -90 0">
+      <!-- Pantalla Base -->
+      <a-plane width="3.2" height="1.8" color="#08121e"></a-plane>
+      <!-- Borde Neón -->
+      <a-plane width="3.26" height="1.86" position="0 0 -0.005" color="#00e5ff"></a-plane>
+      <!-- Contenido del Monitoreo -->
+      <a-text value="SISTEMA DE SUPERVISION DE DATA CENTER\n---------------------------------------------\nTemperatura Sala: 19.2 C   |  Humedad: 42%\nEstado Climatizacion CRAC: NORMAL\nRacks Operativos: 7 / 8\n\nALERTA DETECTADA:\n-> RACK 06: FALLA EN FUENTE DE PODER U4" 
+              position="0 0 0.01" align="center" width="2.8" color="#ffffff"></a-text>
+    </a-entity>
+
+
+    <!-- ==========================================
+         CÁMARA DEL VISITANTE Y CURSOR RAYCASTER
+         ========================================== -->
+    <a-camera position="0 1.6 0.8" look-controls="pointerLockEnabled: false" wasd-controls="acceleration: 20">
+      <!-- Cursor tipo retícula para hacer clic sobre elementos con la clase "interactivo" -->
+      <a-cursor raycaster="objects: .interactivo"
+                fuse="false"
+                color="#5fe9ff"
+                space="0.1"
+                design="ring">
+      </a-cursor>
+    </a-camera>
+
+  </a-scene>
+
+</body>
+</html>
